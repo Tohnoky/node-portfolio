@@ -10,12 +10,22 @@ log_info "Начинаем проверку окружения для node-portf
 REQUIRED_TOOLS=("git" "node" "npm" "docker" "docker compose")
 
 for TOOL in "${REQUIRED_TOOLS[@]}"; do
-    # command -v проверяет, существует ли команда в системе
-    if command -v "${TOOL}" > /dev/null 2>&1; then
-        log_info "✅ ${TOOL} установлен."
+    if [[ "${TOOL}" == "docker compose" ]]; then
+        # Для docker compose проверяем вызов version
+        if docker compose version > /dev/null 2>&1; then
+            log_info "✅ ${TOOL} установлен."
+        else
+            log_error "❌ ${TOOL} НЕ установлен!"
+            exit 1
+        fi
     else
-        log_error "❌ ${TOOL} НЕ установлен! Установи его перед продолжением."
-        exit 1
+        # Для остальных используем command -v
+        if command -v "${TOOL}" > /dev/null 2>&1; then
+            log_info "✅ ${TOOL} установлен."
+        else
+            log_error "❌ ${TOOL} НЕ установлен!"
+            exit 1
+        fi
     fi
 done
 
