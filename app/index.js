@@ -1,34 +1,85 @@
 const express = require('express');
+const redis = require('redis');
+
 const app = express();
 
-// Порт и версия берём из переменных окружения, если они есть, иначе используем дефолтные
 const PORT = process.env.PORT || 3000;
 const VERSION = process.env.APP_VERSION || '1.0.0-local';
+const REDIS_HOST = process.env.REDIS_HOST || 'localhost';
+const REDIS_PORT = process.env.REDIS_PORT || 6379;
 
-// Главная страница
-app.get('/', (req, res) => {
-  res.send(`
-    <h1>🚀 Hello from Node.js DevOps Portfolio!</h1>
-    <p>Application Version: <strong>${VERSION}</strong></p>
-    <p>Environment: <strong>${process.env.NODE_ENV || 'development'}</strong></p>
-  `);
+// Создаём Redis клиент
+const redisClient = redis.createClient({
+  socket: {
+    host: REDIS_HOST,
+    port: REDIS_PORT
+  }
 });
 
-// Healthcheck (проверка здоровья) - нужна для Docker и CI/CD
-app.get('/healthz', (req, res) => {
-  res.status(200).send('OK');
+// Обработка ошибок Redis
+redisClient.on('error', (err) => {
+  console.error('Redis error:', err);
 });
 
-// Эндпоинт с версией в формате JSON
+// Подключаемся к Redis
+(async () => {
+  try {
+    await redisClient.connect();
+    console.log('✅ Connected to Redis');
+  } catch (err) {
+    console.error('❌ Failed to connect to Redis:', err);
+  }
+})();
+
+// Главная страница со счётчиком посещений
+app.get('/', async (req, res) => {
+  try {
+    const visits = await redisClient.incr('visits');
+    res.send(`
+      <h1>🚀 Hello from Node.js DevOps Portfolio!</h1>
+      <p>Application Version: <strong>${VERSION}</strong></p>
+      <p>Environment: <strong>${process.env.NODE_ENV || 'development'}</strong></p>
+      <p>Total visits: <strong>${visits}</strong></p>
+    `);
+  } catch (err) {
+    res.status(500).send('Error connecting to Redis');
+  }
+});
+
+// Healthcheck
+app.get('/healthz', async (req, res) => {
+  try {
+    if (redisClient.isOpen) {
+      await redisClient.ping();
+      res.status(200).send('OK');
+    } else {
+      res.status(503).send('Redis not connected');
+    }
+  } catch (err) {
+    res.status(503).send('Service unavailable');
+  }
+});
+
+// Версия
 app.get('/version', (req, res) => {
   res.json({ 
     version: VERSION, 
     environment: process.env.NODE_ENV || 'development',
-    uptime: process.uptime()
+    uptime: process.uptime(),
+    redis: redisClient.isOpen ? 'connected' : 'disconnected'
   });
 });
 
-// Запуск сервера
+// Сброс счётчика (для тестов)
+app.get('/reset', async (req, res) => {
+  try {
+    await redisClient.set('visits', 0);
+    res.json({ message: 'Counter reset', visits: 0 });
+  } catch (err) {
+    res.status(500).send('Error resetting counter');
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`✅ Server is running on http://localhost:${PORT}`);
 });
