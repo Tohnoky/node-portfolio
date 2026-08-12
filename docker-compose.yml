@@ -70,8 +70,14 @@ services:
 #  alertmanager:
 #    image: prom/alertmanager:latest
 #    container_name: portfolio-alertmanager
+#    env_file:
+#      - .env
 #    volumes:
-#      - ./deploy/monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+#      - ./deploy/monitoring/alertmanager.yml.template:/etc/alertmanager/alertmanager.yml.template:ro
+#      - ./deploy/monitoring/alertmanager-entrypoint.sh:/entrypoint.sh:ro
+#    entrypoint: ["/entrypoint.sh"]
+#    command:
+#      - '--config.file=/etc/alertmanager/alertmanager.yml'
 #    restart: unless-stopped
 #    networks:
 #      - backend
