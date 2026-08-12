@@ -29,3 +29,4 @@ backups/
 .env
 .env.*
 !.env.example
+deploy/monitoring/alertmanager.yml
