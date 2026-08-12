@@ -24,3 +24,8 @@ temp/
 
 # Local backups
 backups/
+
+# Environment variables
+.env
+.env.*
+!.env.example
