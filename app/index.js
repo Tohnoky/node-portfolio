@@ -1,7 +1,10 @@
 const express = require('express');
 const redis = require('redis');
+const { register, metricsMiddleware, updateVisitsMetric } = require('./metrics');
 
 const app = express();
+// Middleware для сбора метрик
+app.use(metricsMiddleware);
 
 const PORT = process.env.PORT || 3000;
 const VERSION = process.env.APP_VERSION || '1.0.0-local';
@@ -35,6 +38,8 @@ redisClient.on('error', (err) => {
 app.get('/', async (req, res) => {
   try {
     const visits = await redisClient.incr('visits');
+    // Обновляем метрику visits
+    await updateVisitsMetric(redisClient);
     res.send(`
       <h1>🚀 Hello from Node.js DevOps Portfolio!</h1>
       <p>Application Version: <strong>${VERSION}</strong></p>
@@ -57,6 +62,19 @@ app.get('/healthz', async (req, res) => {
     }
   } catch (err) {
     res.status(503).send('Service unavailable');
+  }
+});
+
+// Prometheus metrics endpoint
+app.get('/metrics', async (req, res) => {
+  try {
+    // Обновляем метрику visits из Redis
+    await updateVisitsMetric(redisClient);
+    
+    res.set('Content-Type', register.contentType);
+    res.end(await register.metrics());
+  } catch (err) {
+    res.status(500).end(err.message);
   }
 });
 
