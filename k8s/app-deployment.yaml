@@ -5,7 +5,7 @@ metadata:
   labels:
     app: portfolio-app
 spec:
-  replicas: 2                                    # ← 2 копии приложения!
+  replicas: 2
   selector:
     matchLabels:
       app: portfolio-app
@@ -16,20 +16,24 @@ spec:
     spec:
       containers:
       - name: app
-        image: ghcr.io/tohnoky/node-portfolio:latest   # ← Твой образ из GHCR!
-        imagePullPolicy: Always                         # Всегда тянуть свежий образ
+        image: ghcr.io/tohnoky/node-portfolio:latest
+        imagePullPolicy: Always
         ports:
         - containerPort: 3000
+        envFrom:
+        - configMapRef:
+            name: portfolio-app-config
         env:
-        - name: NODE_ENV
-          value: "production"
-        - name: PORT
-          value: "3000"
-        - name: REDIS_HOST
-          value: "portfolio-redis"                      # ← Имя Service из K8s!
-        - name: REDIS_PORT
-          value: "6379"
-        # Liveness probe: "Жив ли контейнер?" (аналог HEALTHCHECK)
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: portfolio-app-secret
+              key: REDIS_PASSWORD
+        - name: API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: portfolio-app-secret
+              key: API_KEY
         livenessProbe:
           httpGet:
             path: /healthz
@@ -38,7 +42,6 @@ spec:
           periodSeconds: 30
           timeoutSeconds: 3
           failureThreshold: 3
-        # Readiness probe: "Готов ли принимать трафик?"
         readinessProbe:
           httpGet:
             path: /healthz
@@ -47,7 +50,6 @@ spec:
           periodSeconds: 10
           timeoutSeconds: 3
           failureThreshold: 3
-        # Ресурсы (важно для production!)
         resources:
           requests:
             memory: "64Mi"
