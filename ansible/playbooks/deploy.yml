@@ -1,0 +1,79 @@
+---
+# Playbook: Автоматический деплой с использованием Handlers
+# Запуск: ansible-playbook playbooks/deploy.yml
+
+- name: Deploy Node.js Portfolio Application
+  hosts: portfolio-server
+  # Работаем от имени deploy (без глобального become)
+  
+  vars:
+    project_dir: /home/deploy/node-portfolio
+    git_repo: https://github.com/Tohnoky/node-portfolio.git
+    git_branch: main
+    app_service: app
+  
+  tasks:
+    # 1. Настраиваем SSH known_hosts
+    - name: Ensure github.com is in known_hosts
+      ansible.builtin.known_hosts:
+        path: '/home/deploy/.ssh/known_hosts'
+        name: github.com
+        key: "{{ lookup('pipe', 'ssh-keyscan -t rsa,ecdsa,ed25519 github.com 2>/dev/null') }}"
+        state: present
+
+    # 2. Получаем свежий код
+    # Если код изменился (changed: true), Ansible автоматически "позовёт" handler
+    - name: Pull latest code from GitHub
+      ansible.builtin.git:
+        repo: "{{ git_repo }}"
+        dest: "{{ project_dir }}"
+        version: "{{ git_branch }}"
+        update: yes
+      notify: 
+        - Rebuild Docker image
+    
+    # 3. ВАЖНО: Принудительно запускаем handlers прямо сейчас!
+    # По умолчанию handlers ждут конца play, но нам нужно проверить healthcheck
+    # СРАЗУ ПОСЛЕ перезапуска контейнера, а не в самом конце.
+    - name: Flush handlers (apply changes immediately)
+      ansible.builtin.meta: flush_handlers
+
+    # 4. Проверяем, что приложение живое после деплоя
+    - name: Ensure application is healthy
+      ansible.builtin.uri:
+        url: http://localhost/healthz
+        method: GET
+        status_code: 200
+        timeout: 30
+      register: healthcheck_result
+      retries: 10
+      delay: 3
+      until: healthcheck_result.status | default(0) == 200
+      changed_when: false
+
+    # 5. Финальный отчёт
+    - name: Display container status
+      ansible.builtin.command:
+        cmd: "docker ps --format '{% raw %}{{.Names}}: {{.Status}}{% endraw %}'"
+      register: container_status
+      changed_when: false
+    
+    - name: Show final status
+      ansible.builtin.debug:
+        var: container_status.stdout_lines
+
+  # === HANDLERS ===
+  # Выполняются только если их вызвали через notify
+  handlers:
+    # Шаг A: Пересобираем образ
+    - name: Rebuild Docker image
+      ansible.builtin.command:
+        cmd: docker compose build {{ app_service }}
+        chdir: "{{ project_dir }}"
+      notify: Restart application container  # ← Цепочка: после сборки зовём рестарт
+
+    # Шаг B: Перезапускаем контейнер
+    - name: Restart application container
+      ansible.builtin.command:
+        cmd: docker compose up -d --force-recreate {{ app_service }}
+        chdir: "{{ project_dir }}"

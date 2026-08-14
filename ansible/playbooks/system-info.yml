@@ -1,0 +1,45 @@
+---
+# Playbook: сбор информации о сервере
+# Запуск: ansible-playbook playbooks/system-info.yml
+
+- name: Gather server information
+  hosts: all
+  become: true
+
+  tasks:
+    # Задача 1: проверка соединения
+    - name: Check SSH connection
+      ansible.builtin.ping:
+
+    # Задача 2: информация об ОС
+    # Блочный стиль "|" защищает строку от проблем парсинга
+    - name: Display OS information
+      ansible.builtin.debug:
+        msg: |
+          Hostname: {{ ansible_hostname }}
+          OS: {{ ansible_distribution }} {{ ansible_distribution_version }}
+          Kernel: {{ ansible_kernel }}
+          CPU cores: {{ ansible_processor_vcpus }}
+          Total RAM: {{ ansible_memtotal_mb }} MB
+
+    # Задача 3: статус сервиса Docker
+    - name: Check Docker service status
+      ansible.builtin.systemd:
+        name: docker
+      register: docker_service
+
+    - name: Display Docker status
+      ansible.builtin.debug:
+        msg: "Docker service is {{ docker_service.status.ActiveState }}"
+
+    # Задача 4: список контейнеров
+    # ВАЖНО: вся строка обёрнута в двойные кавычки из-за { } и :
+    - name: Get running containers
+      ansible.builtin.command: "docker ps --format '{% raw %}{{.Names}}: {{.Status}}{% endraw %}'"
+      register: containers
+      changed_when: false
+
+    # Задача 5: вывод списка контейнеров
+    - name: Display containers
+      ansible.builtin.debug:
+        var: containers.stdout_lines

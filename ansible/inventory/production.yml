@@ -1,0 +1,14 @@
+all:
+  hosts:
+    # Имя сервера (alias) - можно любое
+    portfolio-server:
+      # Реальный IP для SSH
+      ansible_host: 62.109.17.61
+      # Пользователь для подключения
+      ansible_user: deploy
+
+  children:
+    # Группа серверов (для будущего масштабирования)
+    production:
+      hosts:
+        portfolio-server:

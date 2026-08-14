@@ -1,0 +1,218 @@
+---
+# Playbook: Первоначальная настройка сервера
+# Запуск: ansible-playbook playbooks/setup.yml
+# Dry-run: ansible-playbook playbooks/setup.yml --check
+
+- name: Setup production server for Node.js Portfolio
+  hosts: portfolio-server
+  become: true
+  
+  vars:
+    project_dir: /home/deploy/node-portfolio
+    base_packages:
+      - git
+      - curl
+      - wget
+      - ca-certificates
+      - gnupg
+      - lsb-release
+      - unzip
+      - jq
+    
+    # Пользователь для запуска Docker
+    deploy_user: deploy
+  
+  tasks:
+    # === ЧАСТЬ 1: Базовые пакеты ===
+    
+    - name: Update apt cache
+      ansible.builtin.apt:
+        update_cache: yes
+        cache_valid_time: 3600
+    
+    - name: Upgrade all packages to the latest version
+      ansible.builtin.apt:
+        upgrade: dist
+    
+    - name: Install base packages
+      ansible.builtin.apt:
+        name: "{{ base_packages }}"
+        state: present
+    
+    - name: Verify git installation
+      ansible.builtin.command: git --version
+      register: git_version
+      changed_when: false
+    
+    - name: Display git version
+      ansible.builtin.debug:
+        msg: "Git version: {{ git_version.stdout }}"
+    
+    # === ЧАСТЬ 2: Docker ===
+    
+    # Задача 1: Проверяем, установлен ли Docker
+    - name: Check if Docker is installed
+      ansible.builtin.command: docker --version
+      register: docker_check
+      changed_when: false
+      failed_when: false  # Не падать, если Docker не установлен
+    
+    - name: Display Docker check result
+      ansible.builtin.debug:
+        msg: "Docker installed: {{ docker_check.rc == 0 }}"
+    
+    # Задача 2: Устанавливаем Docker (только если его нет)
+    # Параметр creates делает задачу идемпотентной:
+    # команда выполнится только если /usr/bin/docker НЕ существует
+    - name: Install Docker using official script
+      ansible.builtin.shell: |
+        curl -fsSL https://get.docker.com -o /tmp/get-docker.sh
+        sh /tmp/get-docker.sh
+        rm /tmp/get-docker.sh
+      args:
+        creates: /usr/bin/docker  # ← Идемпотентность!
+      when: docker_check.rc != 0
+    
+    # Задача 3: Проверяем версию Docker
+    - name: Verify Docker installation
+      ansible.builtin.command: docker --version
+      register: docker_version
+      changed_when: false
+    
+    - name: Display Docker version
+      ansible.builtin.debug:
+        msg: "Docker version: {{ docker_version.stdout }}"
+    
+    # Задача 4: Добавляем пользователя deploy в группу docker
+    # Это позволяет запускать docker без sudo
+    - name: Add deploy user to docker group
+      ansible.builtin.user:
+        name: "{{ deploy_user }}"
+        groups: docker
+        append: yes
+    
+    # Задача 5: Проверяем, что пользователь в группе docker
+    - name: Verify docker group membership
+      ansible.builtin.command: id -nG {{ deploy_user }}
+      register: user_groups
+      changed_when: false
+    
+    - name: Display user groups
+      ansible.builtin.debug:
+        msg: "User {{ deploy_user }} groups: {{ user_groups.stdout }}"
+    
+    # Задача 6: Проверяем, что Docker Compose работает
+    - name: Verify Docker Compose
+      ansible.builtin.command: docker compose version
+      register: compose_version
+      changed_when: false
+    
+    - name: Display Docker Compose version
+      ansible.builtin.debug:
+        msg: "Docker Compose version: {{ compose_version.stdout }}"
+    
+    # Задача 7: Проверяем статус сервиса Docker
+    - name: Check Docker service status
+      ansible.builtin.systemd:
+        name: docker
+      register: docker_service
+    
+    - name: Display Docker service status
+      ansible.builtin.debug:
+        msg: "Docker service is {{ docker_service.status.ActiveState }}"
+
+    # === ЧАСТЬ 3: Swap (важно для 1GB RAM) ===
+    
+    # Задача 1: Проверяем, существует ли swap-файл
+    - name: Check if swap file exists
+      ansible.builtin.stat:
+        path: /swapfile
+      register: swap_file
+    
+    # Задача 2: Создаём swap-файл (2GB), если его нет
+    - name: Create 2GB swap file
+      ansible.builtin.command: fallocate -l 2G /swapfile
+      args:
+        creates: /swapfile
+      when: not swap_file.stat.exists
+    
+    # Задача 3: Устанавливаем безопасные права (только root)
+    - name: Set swap file permissions
+      ansible.builtin.file:
+        path: /swapfile
+        mode: '0600'
+    
+    # Задача 4: Форматируем как swap
+    - name: Make swap file
+      ansible.builtin.command: mkswap /swapfile
+      when: not swap_file.stat.exists
+      changed_when: true
+    
+    # Задача 5: Активируем swap
+    - name: Enable swap file
+      ansible.builtin.command: swapon /swapfile
+      when: not swap_file.stat.exists
+      changed_when: true
+    
+    # Задача 6: Добавляем swap в fstab (для персистентности после ребута)
+    - name: Add swap to fstab
+      ansible.builtin.lineinfile:
+        path: /etc/fstab
+        line: '/swapfile none swap sw 0 0'
+        state: present
+    
+    # Задача 7: Настраиваем swappiness (оптимально для сервера)
+    - name: Set swappiness to 10
+      ansible.builtin.sysctl:
+        name: vm.swappiness
+        value: '10'
+        state: present
+        reload: yes
+    
+    # Задача 8: Проверяем текущее состояние swap
+    - name: Display swap status
+      ansible.builtin.command: swapon --show
+      register: swap_status
+      changed_when: false
+    
+    - name: Show swap info
+      ansible.builtin.debug:
+        msg: "Swap status: {{ swap_status.stdout }}"
+
+    # === ЧАСТЬ 4: Секреты и .env файл ===
+    
+    # 1. Проверяем существование secrets.yml (поднимаемся на уровень выше через ../)
+    - name: Check if secrets.yml exists
+      ansible.builtin.stat:
+        path: "{{ playbook_dir }}/../secrets.yml"
+      register: secrets_file
+      delegate_to: localhost
+      become: false
+    
+    # 2. Загружаем секреты из Vault
+    - name: Load secrets from Vault
+      ansible.builtin.include_vars:
+        file: "{{ playbook_dir }}/../secrets.yml"
+      when: secrets_file.stat.exists
+      delegate_to: localhost
+      become: false
+      no_log: true  # ⭐ ВАЖНО: скрывает секреты из вывода консоли!
+    
+    # 3. Создаём/проверяем папку проекта
+    - name: Ensure project directory exists
+      ansible.builtin.file:
+        path: "{{ project_dir }}"
+        state: directory
+        owner: deploy
+        group: deploy
+        mode: '0755'
+    
+    # 4. Генерируем .env из шаблона (путь к шаблону тоже относительный от playbook_dir)
+    - name: Generate .env file from template
+      ansible.builtin.template:
+        src: "../templates/.env.j2"
+        dest: "{{ project_dir }}/.env"
+        owner: deploy
+        group: deploy
+        mode: '0600'
+      when: secrets_file.stat.exists
