@@ -30,7 +30,7 @@
         version: "{{ git_branch }}"
         update: yes
       notify: 
-        - Rebuild Docker image
+        - Pull latest Docker image from GHCR
     
     # 3. ВАЖНО: Принудительно запускаем handlers прямо сейчас!
     # По умолчанию handlers ждут конца play, но нам нужно проверить healthcheck
@@ -39,9 +39,10 @@
       ansible.builtin.meta: flush_handlers
 
     # 4. Проверяем, что приложение живое после деплоя
+    # Используем порт 3000 напрямую, чтобы обойти HTTPS редирект Nginx
     - name: Ensure application is healthy
       ansible.builtin.uri:
-        url: http://localhost/healthz
+        url: http://localhost:3000/healthz
         method: GET
         status_code: 200
         timeout: 30
@@ -62,17 +63,30 @@
       ansible.builtin.debug:
         var: container_status.stdout_lines
 
+    # 6. Показываем версию приложения
+    - name: Display deployed version
+      ansible.builtin.uri:
+        url: http://localhost:3000/version
+        method: GET
+        return_content: yes
+      register: version_info
+      changed_when: false
+    
+    - name: Show deployed version
+      ansible.builtin.debug:
+        var: version_info.json
+
   # === HANDLERS ===
   # Выполняются только если их вызвали через notify
   handlers:
-    # Шаг A: Пересобираем образ
-    - name: Rebuild Docker image
+    # Шаг A: Скачиваем свежий образ из GHCR
+    - name: Pull latest Docker image from GHCR
       ansible.builtin.command:
-        cmd: docker compose build {{ app_service }}
+        cmd: docker compose pull {{ app_service }}
         chdir: "{{ project_dir }}"
-      notify: Restart application container  # ← Цепочка: после сборки зовём рестарт
+      notify: Restart application container  # ← Цепочка: после pull зовём рестарт
 
-    # Шаг B: Перезапускаем контейнер
+    # Шаг B: Перезапускаем контейнер с новым образом
     - name: Restart application container
       ansible.builtin.command:
         cmd: docker compose up -d --force-recreate {{ app_service }}
