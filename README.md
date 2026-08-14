@@ -222,6 +222,89 @@ ansible-playbook playbooks/deploy.yml
 
 ---
 
+## 🎯 Kubernetes Deployment (Local Development)
+
+Проект включает полноценные Kubernetes-манифесты для локальной разработки и тестирования через **minikube**.
+
+### Архитектура в Kubernetes
+
+```
+External Traffic (curl/browser)
+         ↓
+Minikube Cluster (192.168.49.2)
+         ↓
+┌─────────────────────────────────────────────────────────┐
+│  Ingress Controller (Nginx)                            │
+│  Host: portfolio.local → Service: portfolio-app:3000   │
+└────────────────────┬────────────────────────────────────┘
+                     ↓
+         ┌───────────────────────┐
+         │  Service:             │
+         │  portfolio-app        │ (ClusterIP, load balancer)
+         └─────┬────────┬────────┘
+               ↓        ↓
+    ┌──────────┴──┐  ┌──┴───────────┐
+    │ Pod #1      │  │ Pod #2       │
+    │ Node.js     │  │ Node.js      │
+    │ (replica 1) │  │ (replica 2)  │
+    └──────┬──────┘  └──────┬───────┘
+           │                │
+           └────────┬───────┘
+                    ↓ DNS: portfolio-redis:6379
+         ┌───────────────────────┐
+         │  Service:             │
+         │  portfolio-redis      │
+         └──────────┬────────────┘
+                    ↓
+         ┌───────────────────────┐
+         │  Pod: Redis           │
+         │  (redis:7-alpine)     │
+         └───────────────────────┘
+```
+
+### Быстрый старт с Kubernetes
+
+```bash
+# 1. Запустите minikube
+minikube start --driver=docker --cpus=2 --memory=4096
+
+# 2. Включите Ingress controller
+minikube addons enable ingress
+
+# 3. Примените все манифесты
+cd k8s/
+kubectl apply -f redis-deployment.yaml
+kubectl apply -f redis-service.yaml
+kubectl apply -f app-deployment.yaml
+kubectl apply -f app-service.yaml
+kubectl apply -f ingress.yaml
+
+# 4. Проверьте статус
+kubectl get pods,svc,ingress
+
+# 5. Откройте приложение
+MINIKUBE_IP=$(minikube ip)
+curl -H "Host: portfolio.local" http://$MINIKUBE_IP/
+```
+
+### Features
+
+✅ **Self-Healing** — Kubernetes автоматически восстанавливает упавшие Pod'ы  
+✅ **Zero-Downtime Deployment** — rolling updates через Deployment strategy  
+✅ **Health Probes** — liveness и readiness probes для мониторинга  
+✅ **Service Discovery** — автоматический DNS для межсервисного общения  
+✅ **Load Balancing** — встроенный балансировщик через Service  
+✅ **Resource Management** — requests и limits для CPU/memory  
+✅ **Infrastructure as Code** — все манифесты в Git
+
+### Манифесты
+
+- `redis-deployment.yaml` — Deployment для Redis (1 replica)
+- `redis-service.yaml` — ClusterIP Service для Redis
+- `app-deployment.yaml` — Deployment для Node.js app (2 replicas) с probes
+- `app-service.yaml` — ClusterIP Service для app
+- `ingress.yaml` — Ingress rules для HTTP маршрутизации
+
 ## ⚙️ CI/CD Pipeline
 
 Pipeline автоматически запускается в **GitHub Actions** при каждом push в `main` и при Pull Request.
