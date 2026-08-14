@@ -1,5 +1,5 @@
 # 1. Базовый образ - легковесный Node.js 20 на основе Alpine
-FROM node:20-alpine
+FROM node:22-alpine
 
 # 2. Устанавливаем рабочую директорию внутри контейнера
 WORKDIR /app
