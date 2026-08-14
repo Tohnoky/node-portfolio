@@ -1,6 +1,7 @@
 services:
   app:
-    build: ./app
+    image: ghcr.io/tohnoky/node-portfolio:latest
+    pull_policy: always
     container_name: portfolio-app
     environment:
       - NODE_ENV=production
