@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: portfolio-app
+  labels:
+    app: portfolio-app
+spec:
+  selector:
+    app: portfolio-app           # ← Находит Pod'ы с label app=portfolio-app
+  ports:
+  - port: 3000                   # ← Порт Service
+    targetPort: 3000             # ← Порт внутри Pod'а
+  type: ClusterIP                # ← Внутренний доступ (пока)
