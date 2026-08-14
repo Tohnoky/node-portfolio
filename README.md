@@ -1,4 +1,3 @@
-```markdown
 # 🚀 Node.js DevOps Portfolio Project
 
 ![CI](https://github.com/Tohnoky/node-portfolio/actions/workflows/ci.yml/badge.svg)
@@ -590,4 +589,3 @@ MIT
 *Made with ❤️ and lots of `docker compose up -d`*
 
 </div>
-```
