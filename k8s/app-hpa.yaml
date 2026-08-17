@@ -1,0 +1,39 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: portfolio-app-hpa
+  labels:
+    app: portfolio-app
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: portfolio-app
+  minReplicas: 2          # Минимум 2 Pod'а (всегда работают)
+  maxReplicas: 10         # Максимум 10 Pod'ов (потолок)
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 50    # Целевое использование CPU: 50%
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 70    # Целевое использование памяти: 70%
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 30    # Ждём 30 сек перед scale up (защита от flapping)
+      policies:
+      - type: Pods
+        value: 2
+        periodSeconds: 60               # Добавляем не больше 2 Pod'ов за минуту
+    scaleDown:
+      stabilizationWindowSeconds: 300   # Ждём 5 минут перед scale down (защита от flapping)
+      policies:
+      - type: Pods
+        value: 1
+        periodSeconds: 60               # Убираем не больше 1 Pod'а за минуту
