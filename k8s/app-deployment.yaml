@@ -13,6 +13,10 @@ spec:
     metadata:
       labels:
         app: portfolio-app
+      annotations:                                    # ← ДОБАВЬ ЭТИ 3 СТРОКИ
+        prometheus.io/scrape: "true"                  # Включить сбор метрик
+        prometheus.io/port: "3000"                    # Порт метрик
+        prometheus.io/path: "/metrics"                # Путь к метрикам
     spec:
       containers:
       - name: app
